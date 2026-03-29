@@ -14,16 +14,17 @@ const s = {
   iconBox: { width: 27, height: 27, background: C.accentDim, border: `1px solid ${C.accentMid}`, borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, flexShrink: 0 },
   fg: { display: "flex", flexDirection: "column", gap: 7 },
   label: { fontSize: 12, fontWeight: 500, color: C.dim },
-  input: { background: C.surface2, border: `1px solid ${C.borderActive}`, borderRadius: 8, color: C.text, fontFamily: "inherit", fontSize: 14, padding: "10px 13px", outline: "none", width: "100%", boxSizing: "border-box" },
   textarea: { background: C.surface2, border: `1px solid ${C.borderActive}`, borderRadius: 8, color: C.text, fontFamily: "inherit", fontSize: 13, padding: "12px 14px", outline: "none", width: "100%", boxSizing: "border-box", resize: "vertical", lineHeight: 1.7 },
   postBlock: { background: C.surface3, border: `1px solid ${C.border}`, borderRadius: 10, padding: 18, marginBottom: 12 },
-  postHeader: { display: "flex", gap: 10, marginBottom: 12, alignItems: "center" },
+  postHeader: { display: "flex", gap: 10, marginBottom: 10, alignItems: "center" },
   removeBtn: { background: "transparent", border: `1px solid rgba(255,95,87,0.3)`, color: C.red, fontFamily: "monospace", fontSize: 11, padding: "3px 10px", borderRadius: 6, cursor: "pointer", marginLeft: "auto" },
   addBtn: { background: "transparent", border: `1px dashed ${C.accentMid}`, color: C.accent, fontFamily: "monospace", fontSize: 12, padding: 11, borderRadius: 10, cursor: "pointer", width: "100%", letterSpacing: "0.5px" },
   pill: (active) => ({ padding: "7px 14px", borderRadius: 100, border: `1px solid ${active ? C.accentMid : C.borderActive}`, background: active ? C.accentDim : C.surface2, color: active ? C.accent : C.muted, fontSize: 12, fontFamily: "monospace", cursor: "pointer", whiteSpace: "nowrap" }),
   pillRow: { display: "flex", flexWrap: "wrap", gap: 8 },
   generateBtn: (ok) => ({ width: "100%", padding: 15, background: ok ? C.accent : C.surface2, color: ok ? "#0a0a0f" : C.muted, border: "none", borderRadius: 10, fontFamily: "Georgia, serif", fontWeight: 700, fontSize: 15, cursor: ok ? "pointer" : "not-allowed", marginTop: 6 }),
   error: { background: "rgba(255,95,87,0.08)", border: "1px solid rgba(255,95,87,0.3)", color: C.red, borderRadius: 8, padding: "12px 16px", fontSize: 13, fontFamily: "monospace", marginTop: 10 },
+  parsedOk: { display: "flex", alignItems: "flex-start", gap: 8, background: "rgba(74,255,145,0.07)", border: "1px solid rgba(74,255,145,0.2)", borderRadius: 8, padding: "9px 12px", marginTop: 10 },
+  parsedErr: { display: "flex", alignItems: "center", gap: 8, background: "rgba(255,95,87,0.07)", border: "1px solid rgba(255,95,87,0.2)", borderRadius: 8, padding: "9px 12px", marginTop: 10, fontSize: 12, color: C.red, fontFamily: "monospace" },
   howto: { background: C.accentDim, border: `1px solid ${C.accentMid}`, borderRadius: 10, padding: 20, marginBottom: 16 },
   howtoTitle: { fontFamily: "Georgia, serif", fontSize: 14, fontWeight: 700, color: C.accent, marginBottom: 12 },
   step: { display: "flex", gap: 12, marginBottom: 8, alignItems: "flex-start" },
@@ -41,11 +42,52 @@ const s = {
   stat: { background: C.surface3, border: `1px solid ${C.border}`, borderRadius: 8, padding: "10px 14px", flex: 1, textAlign: "center" },
   statVal: { fontFamily: "Georgia, serif", fontWeight: 700, fontSize: 22, color: C.accent },
   statLabel: { fontFamily: "monospace", fontSize: 10, color: C.muted, letterSpacing: "0.8px", textTransform: "uppercase", marginTop: 3 },
-  grid2: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 },
 };
 
 const FOCUS_AREAS = ["UX & Experience Design", "Digital Transformation", "CRM & Customer Portals", "AI in Business", "Leadership & Culture", "Data & Insights", "Change Management", "Product Strategy"];
-const EMPTY_POST = () => ({ id: Date.now() + Math.random(), author: "", role: "", content: "" });
+const EMPTY_POST = () => ({ id: Date.now() + Math.random(), raw: "", parsed: null });
+
+// Parse raw LinkedIn post block → { name, role, content }
+function parseLinkedInPost(raw) {
+  const lines = raw.split("\n").map(l => l.trim()).filter(Boolean);
+  if (lines.length < 2) return null;
+
+  // First line is always the name
+  const name = lines[0].replace(/^[•·\-]+\s*/, "").trim();
+  if (!name) return null;
+
+  // Patterns to skip: connection degree, timestamps, action buttons
+  const skipPattern = /^(•\s*)?(1st|2nd|3rd|follow|connect|message|\d+[smhdw]|just now|like|comment|share|repost|send|more)/i;
+
+  // Find role — first meaningful non-skip line after name (within first 5 lines)
+  let role = "";
+  let contentStart = 1;
+
+  for (let i = 1; i < Math.min(lines.length, 8); i++) {
+    if (skipPattern.test(lines[i])) {
+      contentStart = i + 1;
+      continue;
+    }
+    // Treat as role if we haven't found one yet and it's early in the block
+    if (!role && i <= 4) {
+      role = lines[i].replace(/^[•·]+\s*/, "").trim();
+      contentStart = i + 1;
+    } else {
+      contentStart = i;
+      break;
+    }
+  }
+
+  // Skip any remaining noise lines before post body
+  while (contentStart < lines.length && skipPattern.test(lines[contentStart])) {
+    contentStart++;
+  }
+
+  const content = lines.slice(contentStart).join("\n").trim();
+  if (!content) return null;
+
+  return { name, role, content };
+}
 
 export default function SignalScanner() {
   const [posts, setPosts] = useState([EMPTY_POST()]);
@@ -57,18 +99,21 @@ export default function SignalScanner() {
 
   const addPost = () => setPosts(ps => [...ps, EMPTY_POST()]);
   const removePost = (id) => setPosts(ps => ps.filter(p => p.id !== id));
-  const updatePost = (id, field, val) => setPosts(ps => ps.map(p => p.id === id ? { ...p, [field]: val } : p));
+  const updateRaw = (id, val) => {
+    const parsed = val.trim() ? parseLinkedInPost(val) : null;
+    setPosts(ps => ps.map(p => p.id === id ? { ...p, raw: val, parsed } : p));
+  };
   const toggleFocus = (f) => setFocusAreas(fs => fs.includes(f) ? fs.filter(x => x !== f) : [...fs, f]);
 
-  const filled = posts.filter(p => p.author.trim() && p.content.trim());
+  const filled = posts.filter(p => p.parsed && p.parsed.name && p.parsed.content);
   const ready = filled.length > 0;
 
   const generate = () => {
-    if (!ready) { setError("→ Add at least one post with an author name and content."); return; }
+    if (!ready) { setError("→ Paste at least one LinkedIn post — make sure the author name is on the first line."); return; }
     setError("");
 
     const postText = filled.map((p, i) =>
-      `POST ${i + 1}\nAuthor: ${p.author.trim()}${p.role.trim() ? ` — ${p.role.trim()}` : ""}\n---\n${p.content.trim()}`
+      `POST ${i + 1}\nAuthor: ${p.parsed.name}${p.parsed.role ? ` — ${p.parsed.role}` : ""}\n---\n${p.parsed.content}`
     ).join("\n\n===\n\n");
 
     const built = `You are a strategic intelligence analyst and relationship advisor trained in Matthew Dixon's "The Activator's Advantage" methodology.
@@ -109,12 +154,7 @@ For each post:
     setPrompt(built);
   };
 
-  const copy = () => {
-    navigator.clipboard.writeText(prompt);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2500);
-  };
-
+  const copy = () => { navigator.clipboard.writeText(prompt); setCopied(true); setTimeout(() => setCopied(false), 2500); };
   const reset = () => { setPrompt(""); setError(""); setPosts([EMPTY_POST()]); setYourValue(""); setFocusAreas([]); setCopied(false); };
 
   return (
@@ -122,13 +162,15 @@ For each post:
       {!prompt ? (
         <>
           <div style={s.card}>
-            <div style={s.cardTitle}><div style={s.iconBox}>📡</div> Paste posts that caught your eye</div>
-            <div style={s.cardSub}>Scroll your LinkedIn feed, grab anything relevant — contacts, prospects, people you follow. Paste the text and who wrote it.</div>
+            <div style={s.cardTitle}><div style={s.iconBox}>📡</div> Paste LinkedIn posts directly</div>
+            <div style={s.cardSub}>
+              Copy the whole post block from LinkedIn and paste it as-is — name, role, timestamp, content and all. The parser strips the noise and extracts what matters automatically.
+            </div>
 
             {filled.length > 0 && (
               <div style={s.statRow}>
-                <div style={s.stat}><div style={s.statVal}>{filled.length}</div><div style={s.statLabel}>Posts ready</div></div>
-                <div style={s.stat}><div style={s.statVal}>{filled.reduce((a, p) => a + p.content.trim().split(/\s+/).length, 0)}</div><div style={s.statLabel}>Words to analyse</div></div>
+                <div style={s.stat}><div style={s.statVal}>{filled.length}</div><div style={s.statLabel}>Posts parsed</div></div>
+                <div style={s.stat}><div style={s.statVal}>{filled.reduce((a, p) => a + p.parsed.content.split(/\s+/).length, 0)}</div><div style={s.statLabel}>Words to analyse</div></div>
               </div>
             )}
 
@@ -138,14 +180,29 @@ For each post:
                   <div style={{ fontFamily: "monospace", fontSize: 11, color: C.muted, letterSpacing: "1px" }}>POST {idx + 1}</div>
                   {posts.length > 1 && <button style={s.removeBtn} onClick={() => removePost(post.id)}>REMOVE</button>}
                 </div>
-                <div style={{ ...s.grid2, marginBottom: 12 }}>
-                  <div style={s.fg}><label style={s.label}>Author name *</label><input style={s.input} value={post.author} onChange={e => updatePost(post.id, "author", e.target.value)} placeholder="e.g. Sarah Chen" /></div>
-                  <div style={s.fg}><label style={s.label}>Their role / company</label><input style={s.input} value={post.role} onChange={e => updatePost(post.id, "role", e.target.value)} placeholder="e.g. Head of Digital, Westpac" /></div>
-                </div>
                 <div style={s.fg}>
-                  <label style={s.label}>Post content * (paste from LinkedIn)</label>
-                  <textarea style={{ ...s.textarea, minHeight: 100 }} value={post.content} onChange={e => updatePost(post.id, "content", e.target.value)} placeholder="Paste the full post text here..." />
+                  <label style={s.label}>Paste the full LinkedIn post block here</label>
+                  <textarea
+                    style={{ ...s.textarea, minHeight: 140 }}
+                    value={post.raw}
+                    onChange={e => updateRaw(post.id, e.target.value)}
+                    placeholder={`Paste directly from LinkedIn, e.g:\n\nGrace H.\n  • 2nd\nProduct Design & Strategy Advisor • AI integration • SaaS\n3h •\nAre we seeing the beginning of the systemisation of documentation?...`}
+                  />
                 </div>
+                {post.parsed && (
+                  <div style={s.parsedOk}>
+                    <span style={{ fontSize: 14, marginTop: 1 }}>✓</span>
+                    <div>
+                      <div style={{ fontFamily: "monospace", fontSize: 12, color: "#4aff91", fontWeight: 500 }}>{post.parsed.name}</div>
+                      {post.parsed.role && <div style={{ fontFamily: "monospace", fontSize: 11, color: C.muted, marginTop: 2 }}>{post.parsed.role}</div>}
+                    </div>
+                  </div>
+                )}
+                {post.raw.trim() && !post.parsed && (
+                  <div style={s.parsedErr}>
+                    ⚠ Couldn't parse — make sure the author name is the first line of the paste
+                  </div>
+                )}
               </div>
             ))}
             <button style={s.addBtn} onClick={addPost}>+ Add another post</button>
@@ -170,13 +227,18 @@ For each post:
         <>
           <div style={s.howto}>
             <div style={s.howtoTitle}>✅ Your signal scan is ready</div>
-            {[["1","Copy the prompt below"],["2","Open a new Claude chat at claude.ai"],["3",`Paste and send — engagement moves for all ${filled.length} post${filled.length>1?"s":""} + content ideas`],["4","Come back and scan again anytime"]].map(([n,t]) => (
+            {[
+              ["1", "Copy the prompt below"],
+              ["2", "Open a new Claude chat at claude.ai"],
+              ["3", `Paste and send — engagement moves for all ${filled.length} post${filled.length > 1 ? "s" : ""} + content ideas`],
+              ["4", "Come back and scan again anytime"],
+            ].map(([n, t]) => (
               <div key={n} style={s.step}><div style={s.stepNum}>{n}</div><div style={s.stepText}>{t}</div></div>
             ))}
           </div>
           <div style={s.outputCard}>
             <div style={s.outputHeader}>
-              <div style={s.outputTitle}><div style={s.dot} />Signal Scan — {filled.length} post{filled.length>1?"s":""}</div>
+              <div style={s.outputTitle}><div style={s.dot} />Signal Scan — {filled.length} post{filled.length > 1 ? "s" : ""} · {filled.map(p => p.parsed.name.split(" ")[0]).join(", ")}</div>
               <button style={s.copyBtn(copied)} onClick={copy}>{copied ? "COPIED ✓" : "COPY PROMPT"}</button>
             </div>
             <div style={s.promptBox}>{prompt}</div>
