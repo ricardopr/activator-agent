@@ -13,8 +13,8 @@ function getRichText(prop) {
 export default async function handler(req, res) {
   if (req.method !== "GET") return res.status(405).json({ error: "Method not allowed" });
 
-  const apiKey = process.env.NEXT_PUBLIC_NOTION_API_KEY;
-  const dbId = process.env.NEXT_PUBLIC_NOTION_DATABASE_ID;
+  const apiKey = process.env.NOTION_API_KEY;
+  const dbId = process.env.NOTION_DATABASE_ID;
 
   if (!apiKey || !dbId) {
     return res.status(500).json({ error: "Notion credentials not configured" });

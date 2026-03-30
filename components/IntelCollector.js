@@ -126,13 +126,9 @@ function autoSignal(yourTake, parsed, rawContent) {
   return firstSentence.slice(0, 200) + (firstSentence.length > 200 ? "…" : "");
 }
 
-const hasEnvVars = !!(
-  process.env.NEXT_PUBLIC_NOTION_API_KEY &&
-  process.env.NEXT_PUBLIC_NOTION_DATABASE_ID
-);
-
 export default function IntelCollector() {
   const [view, setView] = useState("collect"); // "collect" | "analyse"
+  const [notionConfigured, setNotionConfigured] = useState(true); // assumed true until a 500 proves otherwise
 
   // Collect state
   const [rawContent, setRawContent] = useState("");
@@ -175,6 +171,9 @@ export default function IntelCollector() {
         body: JSON.stringify({ title, author, authorRole, contentType, rawContent, topics, signal }),
       });
       const data = await res.json();
+      if (res.status === 500 && data.error === "Notion credentials not configured") {
+        setNotionConfigured(false);
+      }
       if (!res.ok) throw new Error(data.error || "Save failed");
       setLastSaved({ title: data.title });
       setSessionCount((n) => n + 1);
@@ -195,6 +194,9 @@ export default function IntelCollector() {
     try {
       const res = await fetch("/api/notion/fetch-week");
       const data = await res.json();
+      if (res.status === 500 && data.error === "Notion credentials not configured") {
+        setNotionConfigured(false);
+      }
       if (!res.ok) throw new Error(data.error || "Fetch failed");
 
       const { entries, weekNumber } = data;
@@ -264,19 +266,16 @@ Something my network broadly believes that I could respectfully challenge with e
   const copy = () => { navigator.clipboard.writeText(prompt); setCopied(true); setTimeout(() => setCopied(false), 2500); };
   const resetPrompt = () => { setPrompt(""); setFetchError(""); setWeekEntries(null); };
 
-  const missingEnvVars = typeof window !== "undefined" &&
-    (!process.env.NEXT_PUBLIC_NOTION_API_KEY || !process.env.NEXT_PUBLIC_NOTION_DATABASE_ID);
-
   return (
     <div>
-      {/* Setup banner — shown when env vars are missing */}
-      {missingEnvVars && (
+      {/* Setup banner — shown when server reports credentials not configured */}
+      {!notionConfigured && (
         <div style={s.banner}>
           <div style={s.bannerTitle}>⚠ Notion not configured</div>
           <div style={s.bannerStep}>
             To enable saving, add these to a <span style={s.code}>.env.local</span> file in the project root:<br /><br />
-            <span style={s.code}>NEXT_PUBLIC_NOTION_API_KEY=secret_...</span><br />
-            <span style={s.code}>NEXT_PUBLIC_NOTION_DATABASE_ID=your-database-id</span><br /><br />
+            <span style={s.code}>NOTION_API_KEY=secret_...</span><br />
+            <span style={s.code}>NOTION_DATABASE_ID=your-database-id</span><br /><br />
             <strong style={{ color: C.dim }}>1.</strong> Go to <strong style={{ color: C.dim }}>notion.so/my-integrations</strong> → New integration → copy the Internal Integration Token<br />
             <strong style={{ color: C.dim }}>2.</strong> Create a Notion database with the schema below → open it → copy the ID from the URL (<span style={s.code}>notion.so/&lt;workspace&gt;/<strong>DATABASE_ID</strong>?v=...</span>)<br />
             <strong style={{ color: C.dim }}>3.</strong> In Notion, click ··· on your database → Connections → add your integration<br />
