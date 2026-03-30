@@ -1,6 +1,7 @@
 import { useState } from "react";
 import SignalScanner from "../components/SignalScanner";
 import WeeklyBriefing from "../components/WeeklyBriefing";
+import IntelCollector from "../components/IntelCollector";
 
 const C = {
   bg: "#0a0a0f", surface: "#111118", surface2: "#1a1a24",
@@ -12,6 +13,7 @@ const C = {
 const TABS = [
   { id: "signals", label: "Signal Scanner", icon: "📡", desc: "Analyse feed posts for engagement opportunities + content ideas" },
   { id: "briefing", label: "Weekly Briefing", icon: "📋", desc: "Prioritise your conversations and get drafted messages" },
+  { id: "intel", label: "Intel Collector", icon: "📥", desc: "Collect posts, articles and notes — generate a weekly intelligence brief" },
 ];
 
 export default function Home() {
@@ -67,6 +69,7 @@ export default function Home() {
         {/* Tab content */}
         {activeTab === "signals" && <SignalScanner />}
         {activeTab === "briefing" && <WeeklyBriefing />}
+        {activeTab === "intel" && <IntelCollector />}
 
         {/* Footer */}
         <div style={{ marginTop: 48, textAlign: "center", fontFamily: "monospace", fontSize: 11, color: C.muted }}>
